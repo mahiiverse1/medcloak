@@ -1,0 +1,4 @@
+Patient: Kayla McCarthy, aged 24, attended on 5th May 2026.
+Kayla reports intermittent nausea. Contact: +91 73890 00543.
+She lives at New Wales Street, Pune 411001.
+Kayla works at "Evermore Healthcare Hospital".

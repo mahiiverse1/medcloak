@@ -1,0 +1,13 @@
+[
+  {
+    "id": "hypertension-followup",
+    "title": "Hypertension follow-up",
+    "text": "Patient: Riya Sharma\nDOB: 14/08/1983\nMRN: MH-10492\n\nRiya reports improved home blood-pressure readings after starting amlodipine. She can be reached at +91 98765 43210 or riya.sharma@example.com. Address: 18 Lake View Road, Bengaluru 560001. Follow-up booked for September 21, 2026."
+  },
+  {
+    "id": "diabetes-review",
+    "title": "Diabetes medication review",
+    "text": "Patient name: Arjun Mehta\nUHID: BLR-88241\n\nMr. Mehta attended on 2026-09-02 for a diabetes medication review. HbA1c discussed and diet counselling reinforced. Please send the follow-up instructions to arjun.mehta@samplemail.in."
+  }
+]
+

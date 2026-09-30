@@ -1,0 +1,20 @@
+{
+  "purpose": "Flag possible direct or quasi-identifiers left after first-pass de-identification.",
+  "flag": [
+    "full or partial personal names",
+    "specific street addresses, postal codes, phone numbers, email addresses, or account identifiers",
+    "specific dates tied to an identifiable encounter when not already redacted",
+    "specific facilities, villages, or employers when they materially narrow identity"
+  ],
+  "do_not_flag": [
+    "redaction placeholders such as [NAME] or [DATE]",
+    "conditions, symptoms, medications, laboratory values, or treatment plans",
+    "generic phrases such as hospital, clinic, or doctor",
+    "guessed identifiers that are not explicitly present in the note"
+  ],
+  "output_rules": [
+    "Quote only exact substrings present in the redacted note.",
+    "Use an empty findings list if no likely remaining identifier is explicit.",
+    "Do not provide medical advice or rewrite the note."
+  ]
+}

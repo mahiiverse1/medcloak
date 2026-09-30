@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="MedCloak synthetic clinical-note de-identification demo." />
+    <title>MedCloak | Privacy Review</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/assets/styles.css?v=review-record-2" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <a class="brand" href="/" aria-label="MedCloak home">
+          <img src="/assets/medcloak-logo.png" alt="MedCloak" />
+        </a>
+        <div class="local-badge"><span class="pulse"></span> Local privacy mode</div>
+      </header>
+
+      <section class="hero">
+        <p class="eyebrow">CLINICAL TEXT DE-IDENTIFICATION</p>
+        <h1>Protect the patient.<br /><em>Preserve the story.</em></h1>
+        <p class="hero-copy">A hybrid privacy pipeline that redacts direct identifiers, then asks a local GenAI reviewer to flag possible misses.</p>
+      </section>
+
+      <section class="notice" aria-label="Synthetic data notice">
+        <span class="notice-icon">i</span>
+        <p><strong>Synthetic-demo environment.</strong> Do not enter real patient data. This prototype processes text locally and requires human review.</p>
+      </section>
+
+      <section class="workspace" aria-label="MedCloak workspace">
+        <article class="panel input-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">01 · INPUT</p>
+              <h2>Clinical note</h2>
+            </div>
+            <label class="demo-select-label" for="demo-select">Synthetic demo
+              <select id="demo-select">
+                <option value="">Choose a note</option>
+              </select>
+            </label>
+          </div>
+          <textarea id="clinical-note" spellcheck="false" aria-label="Clinical note" placeholder="Paste a synthetic clinical note here…"></textarea>
+          <div class="input-footer">
+            <label class="file-upload" for="document-upload">Upload TXT, DOCX, or PDF
+              <input id="document-upload" type="file" accept=".txt,.docx,.pdf" />
+            </label>
+            <label class="privacy-profile-label" for="privacy-profile">Privacy level
+              <select id="privacy-profile">
+                <option value="strict" selected>Strict (recommended)</option>
+                <option value="core">Core identifiers</option>
+              </select>
+            </label>
+            <span id="character-count">0 / 20,000 characters</span>
+            <button id="run-button" class="primary-button" type="button">Run privacy check <span aria-hidden="true">→</span></button>
+          </div>
+        </article>
+
+        <article class="panel output-panel">
+          <div class="panel-heading">
+            <div>
+              <p class="panel-kicker">02 · OUTPUT</p>
+              <h2>Protected note</h2>
+            </div>
+            <span id="result-status" class="status-pill">Awaiting input</span>
+          </div>
+          <div id="redacted-note" class="note-output empty-state">Your protected clinical note will appear here.</div>
+          <div id="result-summary" class="result-summary" hidden></div>
+          <div id="download-actions" class="download-actions" hidden aria-label="Download protected note">
+            <span>Download protected copy</span>
+            <button type="button" data-format="txt">TXT</button>
+            <button type="button" data-format="docx">DOCX</button>
+            <button type="button" data-format="pdf">PDF</button>
+          </div>
+          <div id="manual-redaction-actions" class="manual-redaction-actions" hidden aria-label="Human redaction control">
+            <span>Human review</span>
+            <label>Protect selected text as
+              <select id="manual-category-select">
+                <option value="NAME">NAME</option>
+                <option value="LOCATION">LOCATION</option>
+                <option value="ADDRESS">ADDRESS</option>
+                <option value="ORGANIZATION">ORGANIZATION</option>
+                <option value="OTHER" selected>OTHER</option>
+              </select>
+            </label>
+            <button id="manual-protect-button" type="button">Protect selection</button>
+            <button id="undo-manual-protect-button" type="button" disabled>Undo last manual protection</button>
+          </div>
+        </article>
+      </section>
+
+      <section class="review-grid">
+        <article class="panel audit-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="panel-kicker">AUDIT TRAIL</p>
+              <h2>Detected identifiers</h2>
+            </div>
+            <div class="audit-heading-actions">
+              <button id="audit-export-button" class="secondary-button" type="button" hidden>Export audit</button>
+              <span id="entity-total" class="metric">0</span>
+            </div>
+          </div>
+          <div id="entity-list" class="entity-list"><p class="muted-copy">Run a privacy check to view category counts and detector evidence.</p></div>
+        </article>
+
+        <article class="panel review-panel">
+          <div class="panel-heading compact">
+            <div>
+              <p class="panel-kicker">LOCAL GENAI REVIEW</p>
+              <h2>Possible misses</h2>
+            </div>
+            <span id="review-state" class="metric subdued">—</span>
+          </div>
+          <div id="review-list" class="review-list"><p class="muted-copy">The local reviewer runs after first-pass redaction.</p></div>
+        </article>
+      </section>
+
+      <section id="review-signoff" class="review-signoff" hidden aria-label="Human review record">
+        <div>
+          <p class="panel-kicker">HUMAN REVIEW RECORD</p>
+          <h2>Document the review</h2>
+          <p>This session-only record supports transparent review. It is not a compliance certification.</p>
+        </div>
+        <div class="signoff-checks">
+          <label><input type="checkbox" data-review-check="detections" /> I reviewed the detected identifiers.</label>
+          <label><input type="checkbox" data-review-check="genai" /> I considered any local GenAI suggestions.</label>
+          <label><input type="checkbox" data-review-check="synthetic" /> I confirm this is synthetic demo data.</label>
+        </div>
+        <span id="signoff-state" class="status-pill">Review pending</span>
+      </section>
+
+      <details class="evaluation-panel" aria-label="Synthetic evaluation">
+        <summary>Research benchmark <span>synthetic evaluation only</span></summary>
+        <div class="evaluation-content">
+          <div class="panel-heading compact">
+            <div>
+              <p class="panel-kicker">SYNTHETIC EVALUATION</p>
+              <h2>Measured privacy performance</h2>
+            </div>
+            <button id="evaluation-button" class="secondary-button" type="button">View benchmark</button>
+          </div>
+          <div id="evaluation-results" class="evaluation-results"><p class="muted-copy">Run the reproducible synthetic benchmark to compare the transparent rules baseline with the hybrid local NLP detector.</p></div>
+        </div>
+      </details>
+
+      <footer>
+        <span>MEDCLOAK · RESEARCH PROTOTYPE</span>
+        <span>Not a HIPAA or DPDP compliance determination.</span>
+      </footer>
+    </main>
+    <script src="/assets/app.js?v=review-record-2"></script>
+  </body>
+</html>
