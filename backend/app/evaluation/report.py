@@ -31,5 +31,5 @@ def build_evaluation_report() -> dict[str, object]:
             "rules_only": evaluate_exact_spans(expected_names, rules_only_names)["micro"]["recall"],
             "hybrid_local_nlp": evaluate_exact_spans(expected_names, hybrid_names)["micro"]["recall"],
         },
-        "method_note": "Exact-span metrics. Hybrid comparison is limited to names because the NLP layer also proposes locations and organizations.",
+        "method_note": "Controlled synthetic-template exact-span evaluation, not a clinical generalization study. Hybrid comparison is limited to names because the NLP layer also proposes locations and organizations.",
     }

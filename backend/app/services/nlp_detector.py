@@ -1,7 +1,8 @@
 """Optional local NLP detector for names, organizations, and locations.
 
 The statistical spaCy model complements transparent rules. It runs locally and
-only proposes PERSON entities; redaction remains deterministic and auditable.
+proposes conservative person, organization, and location candidates; redaction
+remains deterministic and auditable.
 """
 
 from __future__ import annotations
@@ -86,7 +87,7 @@ class NlpPersonDetector:
                     end=entity.end_char,
                     text=entity.text,
                     replacement=f"[{category}]",
-                    confidence=0.78 if category == "NAME" else 0.72,
+                    heuristic_score=0.78 if category == "NAME" else 0.72,
                     detector=f"nlp.spacy_{entity.label_.lower()}",
                 )
             )

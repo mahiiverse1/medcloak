@@ -11,7 +11,7 @@ MedCloak is a local-first clinical text de-identification research prototype. It
 - Runs an optional local Ollama GenAI reviewer only after first-pass redaction; reviewer findings are advisory and never alter a note automatically.
 - Accepts synthetic TXT, DOCX, and selectable-text PDF uploads in memory, with no persistence.
 - Generates downloadable protected TXT, DOCX, and PDF copies from the redacted text.
-- Shows a reproducible synthetic benchmark that compares rules-only performance with hybrid local-NLP name recall.
+- Shows a reproducible, controlled synthetic-template benchmark that compares rules-only performance with hybrid local-NLP name recall.
 
 ## Architecture
 
@@ -33,7 +33,7 @@ Hybrid detector: clinical rules + local spaCy NLP
 
 No submitted note or upload is written to a database or log file by the application.
 
-## Phase 1: deterministic redaction API
+## Deterministic redaction API
 
 This first phase exposes a FastAPI endpoint that detects common identifiers using transparent rules and replaces them with category labels such as `[NAME]` and `[MRN]`.
 
@@ -72,12 +72,12 @@ From `medcloak/backend`:
 
 Open `http://127.0.0.1:8001` in your browser.
 
-## Planned phases
+## Implemented workflow
 
-1. Deterministic detector and redaction API
-2. Local GenAI privacy-review layer using Ollama and structured JSON output (current)
-3. Web interface with synthetic demo notes and audit panel (current)
-4. Synthetic evaluation, documentation, deployment, and portfolio material (current)
+1. Deterministic redaction with transparent rules and local spaCy NLP
+2. Advisory local GenAI privacy review through Ollama
+3. Browser interface, audit evidence, human-review controls, and protected exports
+4. Reproducible synthetic evaluation and a deployment-safe hosted-demo configuration
 
 ## Local GenAI review
 
@@ -89,6 +89,12 @@ ollama pull qwen2.5:3b
 
 Then call `POST /api/v1/privacy-review` with the **already redacted** text from the de-identification endpoint. The model returns only advisory findings; it never changes a note automatically.
 
+## Hosted demo mode
+
+`render.yaml` prepares a free hosted demo using the rule-based and local-NLP layers. In this mode, the app deliberately disables the Ollama GenAI reviewer instead of sending clinical text to a cloud model or presenting a misleading error. The full GenAI review remains available when MedCloak is run locally with Ollama.
+
+Use only synthetic or properly authorized data in the hosted demo.
+
 ## Synthetic evaluation
 
 MedCloak includes a reproducible, labelled corpus of entirely synthetic notes.
@@ -96,7 +102,7 @@ It measures the transparent rules-only baseline with exact-span precision,
 recall, and F1 before future NLP improvements are added.
 
 The current hybrid detector also uses spaCy's local `en_core_web_sm` model to
-propose PERSON entities that the labelled regex rules do not recognise. It is
+propose person entities that the labelled regex rules do not recognise. It is
 an additional signal, not a compliance guarantee, and its performance will be
 reported separately from the rules-only baseline.
 
@@ -122,7 +128,9 @@ comparison as `backend/data/evaluation/hybrid_report.json`.
 
 ## Scope and limitations
 
-- The synthetic benchmark is not evidence of clinical deployment readiness.
+- The reported exact-span scores measure controlled synthetic templates, not clinical generalization or deployment readiness.
 - General-purpose NLP can produce false positives or miss identifiers. MedCloak therefore exposes detector evidence and requires human review.
+- Detector scores are heuristic priorities, not calibrated probabilities of correctness.
 - Medication-administration contexts are protected from automatic person-name redaction to reduce false positives such as brand names.
+- Phone-number and postal-code rules are primarily India-oriented; they are not a country-independent PHI detector.
 - Password-protected and image-only PDFs are intentionally not processed.

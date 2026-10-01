@@ -64,7 +64,7 @@ class OllamaPrivacyReviewer:
             "medications, conditions, generic hospitals, or placeholders like [NAME]. "
             "Before returning an empty list, check specifically for unredacted staff names (including title-plus-initial "
             "forms such as Dr. A. Shah) and named residences, buildings, facilities, villages, or employers. "
-            "A distinctive named residence such as Harborlight Residences is a review candidate; the generic word "
+            "A distinctive named residence is a review candidate; the generic word "
             "'residence' by itself is not. "
             "Quote the shortest exact entity only, never a complete sentence or surrounding clinical context. "
             "Assign categories from the text itself: a person's written name is NAME, and PHONE may be used only "

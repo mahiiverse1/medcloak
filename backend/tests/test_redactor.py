@@ -5,7 +5,9 @@ from zipfile import ZipFile
 from fastapi.testclient import TestClient
 from pypdf import PdfReader
 
+import app.main as main
 from app.main import app
+from app.services.document_text import DocumentExtractionError, extract_text
 from app.services.privacy_reviewer import OllamaPrivacyReviewer, ReviewerOutputError
 from app.services.redactor import RedactionEngine
 
@@ -162,6 +164,24 @@ def test_web_app_is_served_from_the_root_route() -> None:
     assert "Protect the patient" in response.text
 
 
+def test_health_check_reports_local_genai_mode() -> None:
+    client = TestClient(app)
+    response = client.get("/health")
+
+    assert response.status_code == 200
+    assert response.json()["deployment_mode"] == "local"
+    assert response.json()["genai_review_available"] is True
+
+
+def test_hosted_demo_mode_does_not_attempt_local_ollama(monkeypatch) -> None:
+    monkeypatch.setattr(main, "deployment_mode", "hosted_demo")
+    client = TestClient(app)
+    response = client.post("/api/v1/privacy-review", json={"redacted_text": "[NAME] attended follow-up."})
+
+    assert response.status_code == 503
+    assert "local MedCloak build" in response.json()["detail"]
+
+
 def test_genai_reviewer_discards_hallucinated_or_placeholder_spans() -> None:
     reviewer = OllamaPrivacyReviewer()
     redacted_note = "[NAME] attended City Hospital. Follow-up is in two weeks."
@@ -249,6 +269,15 @@ def test_document_endpoint_rejects_unsupported_files() -> None:
     assert "txt, .docx, or .pdf" in response.json()["detail"]
 
 
+def test_document_text_rejects_extracted_text_above_the_note_limit() -> None:
+    try:
+        extract_text("synthetic-note.txt", b"a" * 20_001)
+    except DocumentExtractionError as error:
+        assert "20,000 characters" in str(error)
+    else:
+        raise AssertionError("Extracted text above the note limit must be rejected.")
+
+
 def test_protected_download_endpoints_return_expected_file_types() -> None:
     client = TestClient(app)
     for output_format, media_type, signature in (
@@ -256,7 +285,7 @@ def test_protected_download_endpoints_return_expected_file_types() -> None:
         ("docx", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", b"PK"),
         ("pdf", "application/pdf", b"%PDF"),
     ):
-        response = client.post(f"/api/v1/download-protected/{output_format}", json={"text": "[NAME] follow-up note."})
+        response = client.post(f"/api/v1/download-protected/{output_format}", json={"redacted_text": "[NAME] follow-up note."})
         assert response.status_code == 200
         assert media_type in response.headers["content-type"]
         assert response.content.startswith(signature)
@@ -264,8 +293,8 @@ def test_protected_download_endpoints_return_expected_file_types() -> None:
 
 def test_protected_documents_include_clear_review_context() -> None:
     client = TestClient(app)
-    docx_response = client.post("/api/v1/download-protected/docx", json={"text": "[NAME] follow-up note."})
-    pdf_response = client.post("/api/v1/download-protected/pdf", json={"text": "[NAME] follow-up note."})
+    docx_response = client.post("/api/v1/download-protected/docx", json={"redacted_text": "[NAME] follow-up note."})
+    pdf_response = client.post("/api/v1/download-protected/pdf", json={"redacted_text": "[NAME] follow-up note."})
 
     with ZipFile(BytesIO(docx_response.content)) as archive:
         document_xml = archive.read("word/document.xml").decode("utf-8")
@@ -275,3 +304,10 @@ def test_protected_documents_include_clear_review_context() -> None:
     assert "Human review is required" in document_xml
     assert "MedCloak Protected Clinical Note" in pdf_text
     assert "Human review is required" in pdf_text
+
+
+def test_protected_download_requires_explicitly_redacted_text_field() -> None:
+    client = TestClient(app)
+    response = client.post("/api/v1/download-protected/txt", json={"text": "Raw source text"})
+
+    assert response.status_code == 422

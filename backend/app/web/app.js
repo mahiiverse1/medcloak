@@ -1,4 +1,7 @@
 const noteInput = document.querySelector("#clinical-note");
+const deploymentBadge = document.querySelector("#deployment-badge");
+const runtimeDescription = document.querySelector("#runtime-description");
+const syntheticNotice = document.querySelector("#synthetic-notice");
 const characterCount = document.querySelector("#character-count");
 const demoSelect = document.querySelector("#demo-select");
 const runButton = document.querySelector("#run-button");
@@ -29,6 +32,7 @@ let restoredEntityIndexes = new Set();
 let activeAudit = null;
 let activeReview = null;
 let manualProtections = [];
+let deploymentMode = "local";
 const REDACTION_CATEGORIES = ["NAME", "DATE", "PHONE", "EMAIL", "MRN", "PATIENT_ID", "ADDRESS", "POSTAL_CODE", "LOCATION", "ORGANIZATION", "OTHER"];
 
 function updateCharacterCount() {
@@ -88,7 +92,7 @@ function renderEntities(entities, allowRestore = false) {
     <div class="entity-row">
       <div>
         <p class="entity-name">${escapeHtml(entity.replacement)}</p>
-        <p class="entity-meta">${escapeHtml(entity.detector)} · ${(entity.confidence * 100).toFixed(0)}% confidence</p>
+        <p class="entity-meta">${escapeHtml(entity.detector)} · ${(entity.heuristic_score * 100).toFixed(0)} heuristic score</p>
       </div>
       <div class="entity-actions">
         <span class="category">${escapeHtml(entity.category)}</span>
@@ -106,7 +110,7 @@ function renderReviewedText() {
     reviewedText = `${reviewedText.slice(0, entity.start)}${replacement}${reviewedText.slice(entity.end)}`;
   }
   for (const protection of manualProtections) {
-    reviewedText = reviewedText.split(protection.text).join(protection.replacement);
+    reviewedText = replaceOccurrence(reviewedText, protection.text, protection.occurrence, protection.replacement);
   }
   redactedNote.textContent = reviewedText;
   const protectedCount = activeRedaction.entities.length - restoredEntityIndexes.size;
@@ -125,13 +129,34 @@ function renderReviewedText() {
   setStatus(restoredEntityIndexes.size ? "Human review edits" : "Review complete");
 }
 
-function addManualProtection(text, category) {
+function replaceOccurrence(text, target, occurrence, replacement) {
+  let start = -1;
+  let searchFrom = 0;
+  for (let index = 0; index <= occurrence; index += 1) {
+    start = text.indexOf(target, searchFrom);
+    if (start === -1) return text;
+    searchFrom = start + target.length;
+  }
+  return `${text.slice(0, start)}${replacement}${text.slice(start + target.length)}`;
+}
+
+function occurrenceAtOffset(text, target, offset) {
+  let occurrence = 0;
+  let start = text.indexOf(target);
+  while (start !== -1) {
+    if (start >= offset) return occurrence;
+    occurrence += 1;
+    start = text.indexOf(target, start + target.length);
+  }
+  return 0;
+}
+
+function addManualProtection(text, category, occurrence = 0) {
   const candidate = text.trim();
   if (!candidate || !REDACTION_CATEGORIES.includes(category)) return false;
   if (!/[A-Za-z0-9]/.test(candidate) || /^\[[A-Z_]+\]$/.test(candidate)) return false;
-  if (manualProtections.some((protection) => protection.text === candidate)) return false;
   if (!redactedNote.textContent.includes(candidate)) return false;
-  manualProtections.push({ text: candidate, category, replacement: `[${category}]` });
+  manualProtections.push({ text: candidate, category, occurrence, replacement: `[${category}]` });
   renderReviewedText();
   return true;
 }
@@ -189,6 +214,27 @@ async function loadDemoNotes() {
   }
 }
 
+async function loadDeploymentStatus() {
+  try {
+    const response = await fetch("/health");
+    if (!response.ok) return;
+    const health = await response.json();
+    deploymentMode = health.deployment_mode || "local";
+    if (deploymentMode === "hosted_demo") {
+      deploymentBadge.textContent = "Hosted synthetic demo";
+      runtimeDescription.textContent = "A hosted synthetic-data demonstration of transparent redaction, local NLP, and human-review controls.";
+      syntheticNotice.innerHTML = "<strong>Hosted synthetic-demo environment.</strong> Do not enter real patient data. Text is processed in memory by this demo server and is not persisted by the application.";
+      reviewList.innerHTML = '<p class="muted-copy">Local Ollama GenAI review is available in the local MedCloak build. This hosted demo keeps rule-based, local NLP, and human review enabled.</p>';
+    } else {
+      deploymentBadge.textContent = "Local privacy mode";
+      runtimeDescription.textContent = "A hybrid privacy pipeline that redacts direct identifiers, then asks a local GenAI reviewer to flag possible misses.";
+      syntheticNotice.innerHTML = "<strong>Local synthetic-demo environment.</strong> Do not enter real patient data. Text is processed in memory on this device and requires human review.";
+    }
+  } catch {
+    // Keep the local-mode default when the optional health check is unavailable.
+  }
+}
+
 async function runPrivacyCheck() {
   const text = noteInput.value.trim();
   if (!text) {
@@ -200,7 +246,9 @@ async function runPrivacyCheck() {
   runButton.disabled = true;
   runButton.textContent = "Protecting note…";
   setStatus("First-pass redaction", "processing");
-  reviewList.innerHTML = '<p class="muted-copy">Waiting for local GenAI review…</p>';
+  reviewList.innerHTML = deploymentMode === "hosted_demo"
+    ? '<p class="muted-copy">Hosted demo mode keeps local Ollama GenAI review disabled.</p>'
+    : '<p class="muted-copy">Waiting for local GenAI review…</p>';
 
   try {
     const redactionResponse = await fetch("/api/v1/deidentify", {
@@ -226,6 +274,14 @@ async function runPrivacyCheck() {
     manualRedactionActions.hidden = false;
     startReviewSignoff();
     renderEntities(redaction.entities, true);
+
+    if (deploymentMode === "hosted_demo") {
+      reviewState.textContent = "local";
+      reviewState.className = "metric subdued";
+      reviewList.innerHTML = '<p class="muted-copy">Local Ollama GenAI review is available only in the local MedCloak build. Continue with the detected identifiers and human-review controls in this hosted synthetic demo.</p>';
+      setStatus("Redaction complete");
+      return;
+    }
 
     setStatus("Local GenAI review", "processing");
     const reviewResponse = await fetch("/api/v1/privacy-review", {
@@ -337,7 +393,12 @@ manualProtectButton.addEventListener("click", () => {
     setStatus("Select text in output", "error");
     return;
   }
-  if (!addManualProtection(selectedText, manualCategorySelect.value)) {
+  const range = selection.getRangeAt(0);
+  const prefix = range.cloneRange();
+  prefix.selectNodeContents(redactedNote);
+  prefix.setEnd(range.startContainer, range.startOffset);
+  const occurrence = occurrenceAtOffset(redactedNote.textContent, selectedText.trim(), prefix.toString().length);
+  if (!addManualProtection(selectedText, manualCategorySelect.value, occurrence)) {
     setStatus("Selection not protected", "error");
     return;
   }
@@ -355,7 +416,7 @@ downloadActions.addEventListener("click", async (event) => {
     const response = await fetch(`/api/v1/download-protected/${outputFormat}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ text: redactedNote.textContent })
+      body: JSON.stringify({ redacted_text: redactedNote.textContent })
     });
     if (!response.ok) throw new Error("Download could not be created.");
     const blob = await response.blob();
@@ -394,7 +455,7 @@ auditExportButton.addEventListener("click", () => {
       category: entity.category,
       replacement: entity.replacement,
       detector: entity.detector,
-      confidence: entity.confidence,
+      heuristic_score: entity.heuristic_score,
       action: restoredEntityIndexes.has(index) ? "restored_after_human_review" : "protected"
     })),
     local_genai_review: {
@@ -444,3 +505,4 @@ evaluationButton.addEventListener("click", async () => {
 clearResults();
 updateCharacterCount();
 loadDemoNotes();
+loadDeploymentStatus();

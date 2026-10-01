@@ -1,8 +1,9 @@
-"""FastAPI entry point for the MedCloak Phase 1 API."""
+"""FastAPI entry point for the MedCloak research-prototype API."""
 
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -14,6 +15,8 @@ from app.schemas import (
     DeidentifyResponse,
     DemoNote,
     HealthResponse,
+    DeploymentMode,
+    ProtectedDocumentRequest,
     PrivacyReviewRequest,
     PrivacyReviewResponse,
     PrivacyProfile,
@@ -25,7 +28,7 @@ from app.services.privacy_reviewer import (
     ReviewerUnavailableError,
 )
 from app.services.redactor import RedactionEngine
-from app.services.document_text import DocumentExtractionError, extract_text
+from app.services.document_text import DocumentExtractionError, extract_text, read_upload_with_limit
 from app.services.protected_document import build_protected_document
 from app.evaluation.report import build_evaluation_report
 
@@ -39,6 +42,7 @@ engine = RedactionEngine()
 reviewer = OllamaPrivacyReviewer()
 DATA_PATH = Path(__file__).resolve().parent.parent / "data" / "demo_notes.json"
 WEB_PATH = Path(__file__).resolve().parent / "web"
+deployment_mode: DeploymentMode = "hosted_demo" if os.getenv("MEDCLOAK_DEPLOYMENT_MODE") == "hosted_demo" else "local"
 
 app.mount("/assets", StaticFiles(directory=WEB_PATH), name="assets")
 
@@ -57,7 +61,13 @@ def web_app() -> FileResponse:
 
 @app.get("/health", response_model=HealthResponse, tags=["system"])
 def health_check() -> HealthResponse:
-    return HealthResponse(status="ok", service="medcloak-api", version=app.version)
+    return HealthResponse(
+        status="ok",
+        service="medcloak-api",
+        version=app.version,
+        deployment_mode=deployment_mode,
+        genai_review_available=deployment_mode == "local",
+    )
 
 
 @app.get("/api/v1/demo-notes", response_model=list[DemoNote], tags=["demo"])
@@ -101,7 +111,8 @@ async def deidentify_document(
 ) -> DeidentifyResponse:
     """Extract and redact a synthetic TXT, DOCX, or PDF upload in memory."""
     try:
-        text = extract_text(file.filename or "", await file.read())
+        contents = await read_upload_with_limit(file)
+        text = extract_text(file.filename or "", contents)
         redacted_text, entities = engine.redact(text, privacy_profile=privacy_profile)
     except DocumentExtractionError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
@@ -119,10 +130,10 @@ async def deidentify_document(
 
 
 @app.post("/api/v1/download-protected/{output_format}", tags=["de-identification"])
-def download_protected_document(output_format: str, payload: DeidentifyRequest) -> Response:
-    """Return an in-memory TXT, DOCX, or PDF built from protected text only."""
+def download_protected_document(output_format: str, payload: ProtectedDocumentRequest) -> Response:
+    """Return an in-memory TXT, DOCX, or PDF from caller-confirmed redacted text."""
     try:
-        contents, media_type, filename = build_protected_document(payload.text, output_format)
+        contents, media_type, filename = build_protected_document(payload.redacted_text, output_format)
     except ValueError as error:
         raise HTTPException(status_code=400, detail=str(error)) from error
     return Response(
@@ -136,6 +147,11 @@ def download_protected_document(output_format: str, payload: DeidentifyRequest) 
 def privacy_review(payload: PrivacyReviewRequest) -> PrivacyReviewResponse:
     """Use a local LLM to flag possible PHI left after deterministic redaction."""
 
+    if deployment_mode == "hosted_demo":
+        raise HTTPException(
+            status_code=503,
+            detail="Local Ollama GenAI review is available only in the local MedCloak build. This hosted demo supports rules, local NLP, and human review using synthetic data.",
+        )
     try:
         return reviewer.review(payload.redacted_text)
     except ReviewerUnavailableError as error:

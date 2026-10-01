@@ -47,7 +47,7 @@ def _build_docx(redacted_text: str) -> bytes:
     title_run.font.name = "Aptos Display"
     title_run.font.color.rgb = RGBColor(0, 0, 0)
 
-    subtitle = document.add_paragraph("De identified research prototype output")
+    subtitle = document.add_paragraph("De-identified research prototype output")
     subtitle.paragraph_format.space_after = Pt(14)
     subtitle_run = subtitle.runs[0]
     subtitle_run.font.name = "Aptos"
@@ -93,7 +93,7 @@ def _build_pdf(redacted_text: str) -> bytes:
         page.drawString(left, top, "MedCloak Protected Clinical Note")
         page.setFont("Helvetica", 9)
         page.setFillColorRGB(0.28, 0.28, 0.28)
-        page.drawString(left, top - 17, "De identified research prototype output")
+        page.drawString(left, top - 17, "De-identified research prototype output")
         page.setFont("Helvetica-Oblique", 8.5)
         page.drawString(left, top - 33, "Human review is required before use or sharing. Not a compliance determination.")
         page.setFont("Helvetica", 8)

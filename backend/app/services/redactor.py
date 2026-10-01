@@ -1,7 +1,7 @@
-"""Transparent rule-based PHI detection used in MedCloak Phase 1.
+"""Transparent rule-based PHI detection used in MedCloak.
 
 The detector is intentionally conservative and easy to inspect. It is not a
-compliance guarantee; future phases add NLP and a local GenAI review layer.
+compliance guarantee; local NLP and an advisory GenAI review layer complement it.
 """
 
 from __future__ import annotations
@@ -18,7 +18,7 @@ from app.services.nlp_detector import NlpPersonDetector
 class DetectionRule:
     category: EntityCategory
     pattern: Pattern[str]
-    confidence: float
+    heuristic_score: float
     detector: str
 
 
@@ -124,10 +124,11 @@ RULES: tuple[DetectionRule, ...] = (
     ),
     DetectionRule(
         "LOCATION",
-        _compiled(
-            r"\b(?:near|outside|beside|at)\s+("
-            r"(?-i:[A-Z][A-Za-z]*(?:[ \t-]+[A-Z][A-Za-z-]*){0,6}[ \t]+"
-            r"(?:Residences?|Apartments?|Housing[ \t]+Society)))\b"
+        re.compile(
+            r"\b(?i:near|outside|beside|at)\s+("
+            r"[A-Z][A-Za-z]*(?:[ \t-]+[A-Z][A-Za-z-]*){0,6}[ \t]+"
+            r"(?:Residences?|Apartments?|Housing[ \t]+Society))\b",
+            flags=re.MULTILINE,
         ),
         0.82,
         "regex.named_residence_context",
@@ -140,9 +141,10 @@ RULES: tuple[DetectionRule, ...] = (
     ),
     DetectionRule(
         "NAME",
-        _compiled(
-            r"\b(?:Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+"
-            r"([A-Z]\.(?:[ \t]+[A-Z][a-z]+){1,3}|[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){0,3})\b"
+        re.compile(
+            r"\b(?i:Mr\.?|Mrs\.?|Ms\.?|Dr\.?)\s+"
+            r"([A-Z]\.(?:[ \t]+[A-Z][a-z]+){1,3}|[A-Z][a-z]+(?:[ \t]+[A-Z][a-z]+){0,3})\b",
+            flags=re.MULTILINE,
         ),
         0.86,
         "regex.honorific_name",
@@ -153,18 +155,18 @@ STRICT_ONLY_CATEGORIES = {"LOCATION", "ORGANIZATION"}
 
 
 def _span_for_match(rule: DetectionRule, match: re.Match[str]) -> tuple[int, int]:
-    """Use a capture group for names, but redact full matches for labelled IDs."""
+    """Use a capture group when a rule separates identifying text from context."""
 
-    if rule.category in {"NAME", "ADDRESS", "ORGANIZATION"} and match.lastindex:
+    if rule.category in {"NAME", "ADDRESS", "LOCATION", "ORGANIZATION"} and match.lastindex:
         return match.start(1), match.end(1)
     return match.start(), match.end()
 
 
 def _select_non_overlapping(candidates: list[DetectedEntity]) -> list[DetectedEntity]:
-    """Keep the highest-confidence span when detectors overlap."""
+    """Prefer the earliest, most-specific span; use score only as a tie-breaker."""
 
     selected: list[DetectedEntity] = []
-    for candidate in sorted(candidates, key=lambda item: (item.start, -(item.end - item.start), -item.confidence)):
+    for candidate in sorted(candidates, key=lambda item: (item.start, -(item.end - item.start), -item.heuristic_score)):
         overlaps = any(candidate.start < existing.end and candidate.end > existing.start for existing in selected)
         if not overlaps:
             selected.append(candidate)
@@ -191,7 +193,7 @@ class RedactionEngine:
                         end=end,
                         text=original,
                         replacement=f"[{rule.category}]",
-                        confidence=rule.confidence,
+                        heuristic_score=rule.heuristic_score,
                         detector=rule.detector,
                     )
                 )
@@ -202,7 +204,7 @@ class RedactionEngine:
         if self.nlp_enabled:
             candidates.extend(self.nlp_detector.detect(text))
 
-        # A labelled patient name is high-confidence evidence. Once it is found,
+        # A labelled patient name is strong rule-based evidence. Once it is found,
         # redact the same full name everywhere else in the note as well. This is
         # safer than hoping every later mention repeats the "Patient:" label.
         labelled_patient_names = [
@@ -217,7 +219,7 @@ class RedactionEngine:
                 "regex.demographic_name_context",
             }
         ]
-        for name in set(labelled_patient_names):
+        for name in sorted(set(labelled_patient_names)):
             name_pattern = re.compile(rf"(?<!\w){re.escape(name)}(?!\w)", flags=re.IGNORECASE)
             for match in name_pattern.finditer(text):
                 candidates.append(
@@ -227,7 +229,7 @@ class RedactionEngine:
                         end=match.end(),
                         text=text[match.start():match.end()],
                         replacement="[NAME]",
-                        confidence=0.94,
+                        heuristic_score=0.94,
                         detector="rule.patient_name_propagation",
                     )
                 )
@@ -246,7 +248,7 @@ class RedactionEngine:
                         end=match.end(),
                         text=text[match.start():match.end()],
                         replacement="[NAME]",
-                        confidence=0.80,
+                        heuristic_score=0.80,
                         detector="rule.patient_given_name_propagation",
                     )
                 )

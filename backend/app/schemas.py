@@ -35,6 +35,7 @@ PotentialPhiCategory = Literal[
 
 RiskLevel = Literal["low", "medium", "high"]
 PrivacyProfile = Literal["core", "strict"]
+DeploymentMode = Literal["local", "hosted_demo"]
 
 
 class DeidentifyRequest(BaseModel):
@@ -52,7 +53,11 @@ class DetectedEntity(BaseModel):
     end: int = Field(gt=0)
     text: str
     replacement: str
-    confidence: float = Field(ge=0, le=1)
+    heuristic_score: float = Field(
+        ge=0,
+        le=1,
+        description="Relative rule or detector priority; not a calibrated probability.",
+    )
     detector: str
 
 
@@ -68,6 +73,12 @@ class DeidentifyResponse(BaseModel):
 
 class PrivacyReviewRequest(BaseModel):
     """A first-pass redacted note sent to the local LLM reviewer only."""
+
+    redacted_text: str = Field(min_length=1, max_length=20_000)
+
+
+class ProtectedDocumentRequest(BaseModel):
+    """Already-redacted text supplied for protected-file generation."""
 
     redacted_text: str = Field(min_length=1, max_length=20_000)
 
@@ -100,6 +111,8 @@ class HealthResponse(BaseModel):
     status: str
     service: str
     version: str
+    deployment_mode: DeploymentMode
+    genai_review_available: bool
 
 
 def category_counts(entities: list[DetectedEntity]) -> dict[str, int]:
